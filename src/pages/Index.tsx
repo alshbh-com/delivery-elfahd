@@ -1,12 +1,25 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+
+import OrderForm from '@/components/OrderForm';
+import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
+import { Settings } from 'lucide-react';
 
 const Index = () => {
+  const navigate = useNavigate();
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="relative">
+      <OrderForm />
+      
+      {/* زر الإدارة المخفي */}
+      <Button
+        onClick={() => navigate('/admin')}
+        variant="ghost"
+        size="sm"
+        className="fixed bottom-4 left-4 opacity-20 hover:opacity-100 transition-opacity duration-300"
+      >
+        <Settings className="h-4 w-4" />
+      </Button>
     </div>
   );
 };

@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -99,5 +100,38 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Cairo', sans-serif;
+    direction: rtl;
   }
+  
+  html {
+    direction: rtl;
+  }
+}
+
+/* تحسينات للنصوص العربية */
+.arabic-text {
+  text-align: right;
+  direction: rtl;
+}
+
+/* تأثيرات بصرية مخصصة */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.orange-glow {
+  box-shadow: 0 0 20px rgba(251, 146, 60, 0.3);
+}
+
+/* تأثيرات الحركة */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+.float-animation {
+  animation: float 3s ease-in-out infinite;
 }
