@@ -18,3 +18,17 @@ export interface Worker {
   lastOrderTime?: string;
   ordersCount: number;
 }
+
+export interface Offer {
+  id: string;
+  title: string;
+  description?: string;
+  image_url?: string;
+  discount_percentage?: number;
+  original_price?: number;
+  offer_price?: number;
+  expires_at?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}

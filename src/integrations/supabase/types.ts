@@ -68,6 +68,48 @@ export type Database = {
           },
         ]
       }
+      offers: {
+        Row: {
+          created_at: string
+          description: string | null
+          discount_percentage: number | null
+          expires_at: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean
+          offer_price: number | null
+          original_price: number | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          discount_percentage?: number | null
+          expires_at?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          offer_price?: number | null
+          original_price?: number | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          discount_percentage?: number | null
+          expires_at?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          offer_price?: number | null
+          original_price?: number | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           created_at: string

@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -11,9 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Trash2, Users, User, Upload, Settings, BarChart3, Clock, Phone, MapPin, Package, ArrowLeft, Plus } from 'lucide-react';
+import { Trash2, Users, User, Upload, Settings, BarChart3, Clock, Phone, MapPin, Package, ArrowLeft, Plus, Tag, Percent, Image as ImageIcon } from 'lucide-react';
 import { dataService } from '@/services/dataService';
-import { Order, Worker } from '@/types';
+import { supabase } from '@/integrations/supabase/client';
+import { Order, Worker, Offer } from '@/types';
 import { toast } from 'sonner';
 
 const AdminPanel = () => {
@@ -37,12 +38,26 @@ const AdminPanel = () => {
     status: 'active' as 'active' | 'inactive'
   });
 
+  // Add offers state
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [isAddOfferOpen, setIsAddOfferOpen] = useState(false);
+  const [newOffer, setNewOffer] = useState({
+    title: '',
+    description: '',
+    image_url: '',
+    discount_percentage: '',
+    original_price: '',
+    offer_price: '',
+    expires_at: ''
+  });
+
   // Logo states
   const [logo, setLogo] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) {
       loadData();
+      loadOffers();
       // Load logo from localStorage
       const savedLogo = localStorage.getItem('site_logo');
       if (savedLogo) {
@@ -65,6 +80,24 @@ const AdminPanel = () => {
       completedOrders: ordersData.filter(o => o.status === 'completed').length,
       activeWorkers: workersData.filter(w => w.status === 'active').length,
     });
+  };
+
+  const loadOffers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('offers')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading offers:', error);
+        return;
+      }
+
+      setOffers(data || []);
+    } catch (error) {
+      console.error('Error:', error);
+    }
   };
 
   const handleLogin = () => {
@@ -112,6 +145,94 @@ const AdminPanel = () => {
     setIsAddWorkerOpen(false);
     loadData();
     toast.success('تم إضافة العامل بنجاح');
+  };
+
+  const handleAddOffer = async () => {
+    if (!newOffer.title) {
+      toast.error('يرجى إدخال عنوان العرض');
+      return;
+    }
+
+    try {
+      const offerData = {
+        title: newOffer.title,
+        description: newOffer.description || null,
+        image_url: newOffer.image_url || null,
+        discount_percentage: newOffer.discount_percentage ? parseInt(newOffer.discount_percentage) : null,
+        original_price: newOffer.original_price ? parseFloat(newOffer.original_price) : null,
+        offer_price: newOffer.offer_price ? parseFloat(newOffer.offer_price) : null,
+        expires_at: newOffer.expires_at || null,
+        is_active: true
+      };
+
+      const { error } = await supabase
+        .from('offers')
+        .insert([offerData]);
+
+      if (error) {
+        console.error('Error adding offer:', error);
+        toast.error('حدث خطأ في إضافة العرض');
+        return;
+      }
+
+      setNewOffer({
+        title: '',
+        description: '',
+        image_url: '',
+        discount_percentage: '',
+        original_price: '',
+        offer_price: '',
+        expires_at: ''
+      });
+      setIsAddOfferOpen(false);
+      loadOffers();
+      toast.success('تم إضافة العرض بنجاح');
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('حدث خطأ غير متوقع');
+    }
+  };
+
+  const handleToggleOfferStatus = async (offerId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('offers')
+        .update({ is_active: !currentStatus })
+        .eq('id', offerId);
+
+      if (error) {
+        console.error('Error updating offer status:', error);
+        toast.error('حدث خطأ في تحديث حالة العرض');
+        return;
+      }
+
+      loadOffers();
+      toast.success(`تم ${!currentStatus ? 'تفعيل' : 'إلغاء'} العرض`);
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('حدث خطأ غير متوقع');
+    }
+  };
+
+  const handleDeleteOffer = async (offerId: string) => {
+    try {
+      const { error } = await supabase
+        .from('offers')
+        .delete()
+        .eq('id', offerId);
+
+      if (error) {
+        console.error('Error deleting offer:', error);
+        toast.error('حدث خطأ في حذف العرض');
+        return;
+      }
+
+      loadOffers();
+      toast.success('تم حذف العرض');
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('حدث خطأ غير متوقع');
+    }
   };
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -320,12 +441,15 @@ const AdminPanel = () => {
 
         {/* Main Content */}
         <Tabs defaultValue="orders" className="space-y-4 md:space-y-6">
-          <TabsList className="grid w-full grid-cols-2 bg-white/60 backdrop-blur-sm">
+          <TabsList className="grid w-full grid-cols-3 bg-white/60 backdrop-blur-sm">
             <TabsTrigger value="orders" className="data-[state=active]:bg-orange-500 data-[state=active]:text-white text-sm md:text-base">
               إدارة الطلبات
             </TabsTrigger>
             <TabsTrigger value="workers" className="data-[state=active]:bg-orange-500 data-[state=active]:text-white text-sm md:text-base">
               إدارة العمال
+            </TabsTrigger>
+            <TabsTrigger value="offers" className="data-[state=active]:bg-orange-500 data-[state=active]:text-white text-sm md:text-base">
+              إدارة العروض
             </TabsTrigger>
           </TabsList>
 
@@ -546,6 +670,212 @@ const AdminPanel = () => {
                                     <AlertDialogCancel>إلغاء</AlertDialogCancel>
                                     <AlertDialogAction 
                                       onClick={() => handleDeleteWorker(worker.id)}
+                                      className="bg-red-600 hover:bg-red-700"
+                                    >
+                                      حذف
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Offers Tab */}
+          <TabsContent value="offers" className="space-y-4 md:space-y-6">
+            <Card className="shadow-xl border-0 bg-white/90 backdrop-blur-sm">
+              <CardHeader className="flex flex-col md:flex-row md:items-center justify-between space-y-2 md:space-y-0 pb-3 md:pb-4">
+                <CardTitle className="text-lg md:text-xl text-orange-800 flex items-center">
+                  <Tag className="w-5 h-5 md:w-6 md:h-6 ml-2" />
+                  إدارة العروض ({offers.length})
+                </CardTitle>
+                
+                <Dialog open={isAddOfferOpen} onOpenChange={setIsAddOfferOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-md text-sm md:text-base px-3 py-2 md:px-4 md:py-2">
+                      <Plus className="w-3 h-3 md:w-4 md:h-4 ml-1 md:ml-2" />
+                      إضافة عرض
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md md:max-w-lg max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>إضافة عرض جديد</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="offerTitle">عنوان العرض *</Label>
+                        <Input
+                          id="offerTitle"
+                          value={newOffer.title}
+                          onChange={(e) => setNewOffer({...newOffer, title: e.target.value})}
+                          placeholder="أدخل عنوان العرض"
+                          className="border-orange-200 focus:border-orange-400"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="offerDescription">وصف العرض</Label>
+                        <Textarea
+                          id="offerDescription"
+                          value={newOffer.description}
+                          onChange={(e) => setNewOffer({...newOffer, description: e.target.value})}
+                          placeholder="أدخل وصف العرض"
+                          className="border-orange-200 focus:border-orange-400"
+                          rows={3}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="offerImage">رابط الصورة</Label>
+                        <Input
+                          id="offerImage"
+                          value={newOffer.image_url}
+                          onChange={(e) => setNewOffer({...newOffer, image_url: e.target.value})}
+                          placeholder="https://example.com/image.jpg"
+                          className="border-orange-200 focus:border-orange-400"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="discountPercentage">نسبة الخصم (%)</Label>
+                          <Input
+                            id="discountPercentage"
+                            type="number"
+                            value={newOffer.discount_percentage}
+                            onChange={(e) => setNewOffer({...newOffer, discount_percentage: e.target.value})}
+                            placeholder="20"
+                            className="border-orange-200 focus:border-orange-400"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="expiresAt">تاريخ الانتهاء</Label>
+                          <Input
+                            id="expiresAt"
+                            type="datetime-local"
+                            value={newOffer.expires_at}
+                            onChange={(e) => setNewOffer({...newOffer, expires_at: e.target.value})}
+                            className="border-orange-200 focus:border-orange-400"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="originalPrice">السعر الأصلي (ج.م)</Label>
+                          <Input
+                            id="originalPrice"
+                            type="number"
+                            step="0.01"
+                            value={newOffer.original_price}
+                            onChange={(e) => setNewOffer({...newOffer, original_price: e.target.value})}
+                            placeholder="100.00"
+                            className="border-orange-200 focus:border-orange-400"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="offerPrice">سعر العرض (ج.م)</Label>
+                          <Input
+                            id="offerPrice"
+                            type="number"
+                            step="0.01"
+                            value={newOffer.offer_price}
+                            onChange={(e) => setNewOffer({...newOffer, offer_price: e.target.value})}
+                            placeholder="80.00"
+                            className="border-orange-200 focus:border-orange-400"
+                          />
+                        </div>
+                      </div>
+                      <Button onClick={handleAddOffer} className="w-full bg-orange-500 hover:bg-orange-600">
+                        إضافة العرض
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent className="px-3 md:px-6">
+                <div className="grid gap-3 md:gap-4">
+                  {offers.length === 0 ? (
+                    <div className="text-center py-8 md:py-12 text-gray-500">
+                      <Tag className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-4 text-gray-300" />
+                      <p className="text-base md:text-lg">لا توجد عروض حتى الآن</p>
+                    </div>
+                  ) : (
+                    offers.map((offer) => (
+                      <Card key={offer.id} className="shadow-md hover:shadow-lg transition-all duration-300 border-l-4 border-l-green-400">
+                        <CardContent className="p-3 md:p-6">
+                          <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 md:gap-0">
+                            <div className="flex-1 space-y-2 md:space-y-3">
+                              <div className="flex items-center space-x-3 space-x-reverse">
+                                <div className="w-12 h-12 md:w-16 md:h-16 bg-gradient-to-br from-green-400 to-green-600 rounded-lg flex items-center justify-center">
+                                  {offer.image_url ? (
+                                    <img src={offer.image_url} alt={offer.title} className="w-full h-full object-cover rounded-lg" />
+                                  ) : (
+                                    <ImageIcon className="w-6 h-6 md:w-8 md:h-8 text-white" />
+                                  )}
+                                </div>
+                                <div>
+                                  <h3 className="font-bold text-base md:text-lg text-gray-800">{offer.title}</h3>
+                                  <Badge className={`${offer.is_active ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'} border text-xs`}>
+                                    {offer.is_active ? 'نشط' : 'غير نشط'}
+                                  </Badge>
+                                </div>
+                              </div>
+                              
+                              {offer.description && (
+                                <p className="text-xs md:text-sm text-gray-600 break-words">{offer.description}</p>
+                              )}
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs md:text-sm">
+                                {offer.discount_percentage && (
+                                  <div className="flex items-center text-gray-600">
+                                    <Percent className="w-3 h-3 md:w-4 md:h-4 ml-2 text-green-500" />
+                                    خصم: {offer.discount_percentage}%
+                                  </div>
+                                )}
+                                {offer.original_price && offer.offer_price && (
+                                  <div className="flex items-center text-gray-600">
+                                    <Tag className="w-3 h-3 md:w-4 md:h-4 ml-2 text-blue-500" />
+                                    {offer.offer_price} ج.م (بدلاً من {offer.original_price} ج.م)
+                                  </div>
+                                )}
+                                {offer.expires_at && (
+                                  <div className="flex items-center text-gray-600">
+                                    <Clock className="w-3 h-3 md:w-4 md:h-4 ml-2 text-orange-500" />
+                                    ينتهي: {formatDate(offer.expires_at)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center space-x-2 space-x-reverse self-start md:self-center">
+                              <div className="flex items-center space-x-1 space-x-reverse">
+                                <span className="text-xs text-gray-600">{offer.is_active ? 'نشط' : 'غير نشط'}</span>
+                                <Switch
+                                  checked={offer.is_active}
+                                  onCheckedChange={() => handleToggleOfferStatus(offer.id, offer.is_active)}
+                                />
+                              </div>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="destructive" size="sm" className="shadow-md">
+                                    <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="max-w-sm md:max-w-md">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>حذف العرض</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-sm">
+                                      هل أنت متأكد من حذف العرض "{offer.title}"؟ لا يمكن التراجع عن هذا الإجراء.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                                    <AlertDialogAction 
+                                      onClick={() => handleDeleteOffer(offer.id)}
                                       className="bg-red-600 hover:bg-red-700"
                                     >
                                       حذف

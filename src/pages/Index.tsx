@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import OrderForm from '@/components/OrderForm';
+import OffersSection from '@/components/OffersSection';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Settings, MessageCircle, Phone } from 'lucide-react';
@@ -107,6 +107,9 @@ const Index = () => {
             </div>
           </div>
         </div>
+
+        {/* Offers Section */}
+        <OffersSection />
 
         {/* Enhanced Order Form */}
         <div className="max-w-4xl mx-auto px-4">
