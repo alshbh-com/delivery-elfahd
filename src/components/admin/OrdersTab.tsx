@@ -3,16 +3,17 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, CheckCircle, Clock, Users, Package } from 'lucide-react';
-import { Order } from '@/types';
+import { Trash2, CheckCircle, Clock, Users, Package, User } from 'lucide-react';
+import { Order, Worker } from '@/types';
 
 interface OrdersTabProps {
   orders: Order[];
+  workers: Worker[];
   onDeleteOrder: (id: string) => void;
   loading: boolean;
 }
 
-const OrdersTab = ({ orders, onDeleteOrder, loading }: OrdersTabProps) => {
+const OrdersTab = ({ orders, workers, onDeleteOrder, loading }: OrdersTabProps) => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
@@ -24,6 +25,12 @@ const OrdersTab = ({ orders, onDeleteOrder, loading }: OrdersTabProps) => {
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
+  };
+
+  const getWorkerName = (workerId?: string) => {
+    if (!workerId) return 'غير محدد';
+    const worker = workers.find(w => w.id === workerId);
+    return worker ? worker.name : 'عامل محذوف';
   };
 
   const formatDate = (dateString: string) => {
@@ -74,7 +81,7 @@ const OrdersTab = ({ orders, onDeleteOrder, loading }: OrdersTabProps) => {
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-right">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-right">
                   <div>
                     <p className="text-sm text-gray-600">الهاتف:</p>
                     <p className="font-medium">{order.phone}</p>
@@ -82,6 +89,13 @@ const OrdersTab = ({ orders, onDeleteOrder, loading }: OrdersTabProps) => {
                   <div>
                     <p className="text-sm text-gray-600">العنوان:</p>
                     <p className="font-medium">{order.address}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">العامل المسؤول:</p>
+                    <div className="flex items-center gap-2 justify-end">
+                      <User className="w-4 h-4 text-blue-500" />
+                      <p className="font-medium text-blue-600">{getWorkerName(order.assignedWorker)}</p>
+                    </div>
                   </div>
                 </div>
                 

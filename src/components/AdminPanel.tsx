@@ -1,6 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { LogOut } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Order, Worker } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -9,7 +10,11 @@ import OrdersTab from './admin/OrdersTab';
 import WorkersTab from './admin/WorkersTab';
 import SettingsTab from './admin/SettingsTab';
 
-const AdminPanel = () => {
+interface AdminPanelProps {
+  onLogout: () => void;
+}
+
+const AdminPanel = ({ onLogout }: AdminPanelProps) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [logo, setLogo] = useState<string | null>(null);
@@ -307,9 +312,18 @@ const AdminPanel = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8 text-center">
+        <div className="mb-8 text-center relative">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">لوحة إدارة الفهد</h1>
           <p className="text-gray-600">إدارة الطلبات والعمال والعروض</p>
+          <Button
+            onClick={onLogout}
+            variant="outline"
+            size="sm"
+            className="absolute top-0 left-0 text-red-600 border-red-300 hover:bg-red-50"
+          >
+            <LogOut className="w-4 h-4 ml-2" />
+            خروج
+          </Button>
         </div>
 
         <Tabs defaultValue="orders" className="space-y-6">
@@ -323,6 +337,7 @@ const AdminPanel = () => {
           <TabsContent value="orders">
             <OrdersTab
               orders={orders}
+              workers={workers}
               onDeleteOrder={deleteOrder}
               loading={loading}
             />
