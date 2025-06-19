@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Trash2, CheckCircle, Clock, Users, Package } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Order, Worker } from '@/types';
@@ -24,10 +25,30 @@ const AdminPanel = () => {
     loadLogo();
   }, []);
 
-  const loadLogo = () => {
-    const savedLogo = localStorage.getItem('site_logo');
-    if (savedLogo) {
-      setLogo(savedLogo);
+  const loadLogo = async () => {
+    try {
+      // Try to get logo from Supabase storage first
+      const { data: files } = await supabase.storage.from('offer-images').list('logos');
+      if (files && files.length > 0) {
+        const { data } = supabase.storage.from('offer-images').getPublicUrl(`logos/${files[0].name}`);
+        if (data?.publicUrl) {
+          setLogo(data.publicUrl);
+          localStorage.setItem('site_logo', data.publicUrl);
+          return;
+        }
+      }
+      
+      // Fallback to localStorage
+      const savedLogo = localStorage.getItem('site_logo');
+      if (savedLogo) {
+        setLogo(savedLogo);
+      }
+    } catch (error) {
+      console.error('Error loading logo:', error);
+      const savedLogo = localStorage.getItem('site_logo');
+      if (savedLogo) {
+        setLogo(savedLogo);
+      }
     }
   };
 
@@ -80,14 +101,13 @@ const AdminPanel = () => {
         return;
       }
 
-      // Convert Supabase data to match our Worker interface
       const formattedWorkers: Worker[] = (data || []).map(worker => ({
         id: worker.id,
         name: worker.name,
         whatsappNumber: worker.phone,
         status: worker.status as 'active' | 'inactive',
         lastOrderTime: worker.last_order?.toString(),
-        ordersCount: 0 // Will be calculated from orders
+        ordersCount: 0
       }));
 
       setWorkers(formattedWorkers);
@@ -131,6 +151,36 @@ const AdminPanel = () => {
       });
 
       setNewWorker({ name: '', whatsappNumber: '' });
+      fetchWorkers();
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
+  const toggleWorkerStatus = async (workerId: string, currentStatus: 'active' | 'inactive') => {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    
+    try {
+      const { error } = await supabase
+        .from('workers')
+        .update({ status: newStatus })
+        .eq('id', workerId);
+
+      if (error) {
+        console.error('Error updating worker status:', error);
+        toast({
+          title: "خطأ",
+          description: "فشل في تحديث حالة العامل",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "نجح",
+        description: `تم تحديث حالة العامل إلى ${newStatus === 'active' ? 'نشط' : 'غير نشط'}`,
+      });
+
       fetchWorkers();
     } catch (error) {
       console.error('Error:', error);
@@ -197,20 +247,53 @@ const AdminPanel = () => {
     }
   };
 
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const logoUrl = e.target?.result as string;
-        setLogo(logoUrl);
-        localStorage.setItem('site_logo', logoUrl);
-        toast({
-          title: "نجح",
-          description: "تم تحديث الشعار بنجاح",
-        });
-      };
-      reader.readAsDataURL(file);
+      try {
+        // Upload to Supabase storage
+        const fileExt = file.name.split('.').pop();
+        const fileName = `logo.${fileExt}`;
+        const filePath = `logos/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('offer-images')
+          .upload(filePath, file, { upsert: true });
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          throw uploadError;
+        }
+
+        // Get public URL
+        const { data } = supabase.storage.from('offer-images').getPublicUrl(filePath);
+        
+        if (data?.publicUrl) {
+          setLogo(data.publicUrl);
+          localStorage.setItem('site_logo', data.publicUrl);
+          
+          toast({
+            title: "نجح",
+            description: "تم تحديث الشعار بنجاح وسيظهر للمستخدمين",
+          });
+        }
+      } catch (error) {
+        console.error('Error uploading logo:', error);
+        
+        // Fallback to local storage
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const logoUrl = e.target?.result as string;
+          setLogo(logoUrl);
+          localStorage.setItem('site_logo', logoUrl);
+          toast({
+            title: "تحذير",
+            description: "تم حفظ الشعار محلياً فقط. يرجى المحاولة مرة أخرى لحفظه على الخادم",
+            variant: "destructive"
+          });
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -362,19 +445,32 @@ const AdminPanel = () => {
                     {workers.map((worker) => (
                       <div key={worker.id} className="border rounded-lg p-4 bg-white">
                         <div className="flex justify-between items-center">
-                          <Button
-                            onClick={() => deleteWorker(worker.id)}
-                            variant="destructive"
-                            size="sm"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                          <div className="text-right">
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={() => deleteWorker(worker.id)}
+                              variant="destructive"
+                              size="sm"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          <div className="text-right flex-1">
                             <h3 className="font-semibold text-lg">{worker.name}</h3>
                             <p className="text-sm text-gray-600">الواتساب: {worker.whatsappNumber}</p>
-                            <Badge variant={worker.status === 'active' ? 'default' : 'secondary'}>
-                              {worker.status === 'active' ? 'نشط' : 'غير نشط'}
-                            </Badge>
+                            <div className="flex items-center gap-3 mt-2 justify-end">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">
+                                  {worker.status === 'active' ? 'نشط' : 'غير نشط'}
+                                </span>
+                                <Switch
+                                  checked={worker.status === 'active'}
+                                  onCheckedChange={() => toggleWorkerStatus(worker.id, worker.status)}
+                                />
+                              </div>
+                              <Badge variant={worker.status === 'active' ? 'default' : 'secondary'}>
+                                {worker.status === 'active' ? 'نشط' : 'غير نشط'}
+                              </Badge>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -407,6 +503,7 @@ const AdminPanel = () => {
                     <div className="mt-4 text-center">
                       <img src={logo} alt="الشعار الحالي" className="w-20 h-20 rounded-full mx-auto" />
                       <p className="text-sm text-gray-600 mt-2">الشعار الحالي</p>
+                      <p className="text-xs text-green-600 mt-1">سيظهر هذا الشعار لجميع المستخدمين</p>
                     </div>
                   )}
                 </div>

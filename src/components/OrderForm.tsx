@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,8 +5,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Order } from '@/types';
-import { dataService } from '@/services/dataService';
 import { ShoppingCart, Phone, MapPin, User, Send } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const OrderForm = () => {
   const [formData, setFormData] = useState({
@@ -25,6 +24,49 @@ const OrderForm = () => {
       ...prev,
       [name]: value
     }));
+  };
+
+  const getNextAvailableWorker = async () => {
+    try {
+      // Get active workers
+      const { data: workers, error } = await supabase
+        .from('workers')
+        .select('*')
+        .eq('status', 'active');
+
+      if (error || !workers || workers.length === 0) {
+        return null;
+      }
+
+      // Get order counts for each worker
+      const workersWithCounts = await Promise.all(
+        workers.map(async (worker) => {
+          const { count } = await supabase
+            .from('orders')
+            .select('*', { count: 'exact', head: true })
+            .eq('worker_id', worker.id);
+
+          return {
+            ...worker,
+            ordersCount: count || 0
+          };
+        })
+      );
+
+      // Sort by order count (ascending) then by last_order (ascending for fairness)
+      workersWithCounts.sort((a, b) => {
+        if (a.ordersCount !== b.ordersCount) {
+          return a.ordersCount - b.ordersCount;
+        }
+        // If same order count, prioritize worker who got order longest time ago
+        return (a.last_order || 0) - (b.last_order || 0);
+      });
+
+      return workersWithCounts[0];
+    } catch (error) {
+      console.error('Error getting available worker:', error);
+      return null;
+    }
   };
 
   const formatOrderMessage = (order: Order, workerName: string): string => {
@@ -51,6 +93,12 @@ const OrderForm = () => {
 رقم الطلب: ${order.id}`;
   };
 
+  const sendWhatsAppMessage = (phoneNumber: string, message: string) => {
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -66,43 +114,46 @@ const OrderForm = () => {
     setIsSubmitting(true);
 
     try {
-      // إنشاء الطلب
-      const order: Order = {
-        id: Date.now().toString(),
-        customerName: formData.customerName,
-        address: formData.address,
-        phone: formData.phone,
-        orderDetails: formData.orderDetails,
-        timestamp: new Date().toISOString(),
+      // Create order in database
+      const orderData = {
+        customer_name: formData.customerName,
+        customer_address: formData.address,
+        customer_phone: formData.phone,
+        order_details: formData.orderDetails,
         status: 'pending'
       };
 
-      // العثور على عامل متاح
-      const availableWorker = dataService.getNextAvailableWorker();
+      const { data: orderResult, error: orderError } = await supabase
+        .from('orders')
+        .insert([orderData])
+        .select()
+        .single();
+
+      if (orderError) {
+        throw orderError;
+      }
+
+      // Get available worker
+      const availableWorker = await getNextAvailableWorker();
       
       if (!availableWorker) {
         toast({
           title: "⚠️ لا يوجد عمال متاحين",
           description: "جميع العمال غير متاحين حاليًا. سيتم حفظ الطلب للمراجعة.",
-          variant: "destructive",
         });
         
-        // حفظ الطلب بدون تعيين عامل
-        dataService.saveOrder(order);
-        
-        // إرسال للإدارة فقط
+        // Send to admin only
         const adminMessage = `⚠️ طلب جديد - لا يوجد عمال متاحين
 
-العميل: ${order.customerName}
-التليفون: ${order.phone}
-العنوان: ${order.address}
-تفاصيل الطلب: ${order.orderDetails}
-وقت الطلب: ${new Date(order.timestamp).toLocaleString('ar-EG')}
-رقم الطلب: ${order.id}`;
+العميل: ${formData.customerName}
+التليفون: ${formData.phone}
+العنوان: ${formData.address}
+تفاصيل الطلب: ${formData.orderDetails}
+وقت الطلب: ${new Date().toLocaleString('ar-EG')}
+رقم الطلب: ${orderResult.id}`;
 
-        dataService.sendWhatsAppMessage(dataService.getAdminWhatsApp(), adminMessage);
+        sendWhatsAppMessage("201024713976", adminMessage);
         
-        // إعادة تعيين النموذج
         setFormData({
           customerName: '',
           address: '',
@@ -114,26 +165,47 @@ const OrderForm = () => {
         return;
       }
 
-      // تعيين العامل للطلب
-      order.assignedWorker = availableWorker.name;
-      order.status = 'assigned';
+      // Assign worker to order
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ 
+          worker_id: availableWorker.id,
+          status: 'assigned'
+        })
+        .eq('id', orderResult.id);
 
-      // حفظ الطلب
-      dataService.saveOrder(order);
-      
-      // تحديث بيانات العامل
-      dataService.assignOrderToWorker(availableWorker.id);
+      if (updateError) {
+        throw updateError;
+      }
 
-      // إرسال الرسائل
+      // Update worker's last order time
+      await supabase
+        .from('workers')
+        .update({ last_order: Date.now() })
+        .eq('id', availableWorker.id);
+
+      // Create order object for messages
+      const order: Order = {
+        id: orderResult.id,
+        customerName: formData.customerName,
+        address: formData.address,
+        phone: formData.phone,
+        orderDetails: formData.orderDetails,
+        timestamp: orderResult.created_at,
+        assignedWorker: availableWorker.name,
+        status: 'assigned'
+      };
+
+      // Send WhatsApp messages
       const workerMessage = formatOrderMessage(order, availableWorker.name);
       const adminMessage = formatAdminMessage(order, availableWorker.name);
 
-      // إرسال للعامل
-      dataService.sendWhatsAppMessage(availableWorker.whatsappNumber, workerMessage);
+      // Send to worker
+      sendWhatsAppMessage(availableWorker.phone, workerMessage);
       
-      // إرسال للإدارة
+      // Send to admin after delay
       setTimeout(() => {
-        dataService.sendWhatsAppMessage(dataService.getAdminWhatsApp(), adminMessage);
+        sendWhatsAppMessage("201024713976", adminMessage);
       }, 1000);
 
       toast({
@@ -141,7 +213,7 @@ const OrderForm = () => {
         description: `تم تعيين الطلب للعامل ${availableWorker.name} وإرسال الرسائل على واتساب`,
       });
 
-      // إعادة تعيين النموذج
+      // Reset form
       setFormData({
         customerName: '',
         address: '',

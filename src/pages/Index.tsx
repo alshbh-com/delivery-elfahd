@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import OrderForm from '@/components/OrderForm';
@@ -5,18 +6,42 @@ import OffersSection from '@/components/OffersSection';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Settings, MessageCircle, Phone } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const Index = () => {
   const [logo, setLogo] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Load logo from localStorage
-    const savedLogo = localStorage.getItem('site_logo');
-    if (savedLogo) {
-      setLogo(savedLogo);
-    }
+    loadLogo();
   }, []);
+
+  const loadLogo = async () => {
+    try {
+      // Try to get logo from Supabase storage first
+      const { data: files } = await supabase.storage.from('offer-images').list('logos');
+      if (files && files.length > 0) {
+        const { data } = supabase.storage.from('offer-images').getPublicUrl(`logos/${files[0].name}`);
+        if (data?.publicUrl) {
+          setLogo(data.publicUrl);
+          localStorage.setItem('site_logo', data.publicUrl);
+          return;
+        }
+      }
+      
+      // Fallback to localStorage
+      const savedLogo = localStorage.getItem('site_logo');
+      if (savedLogo) {
+        setLogo(savedLogo);
+      }
+    } catch (error) {
+      console.error('Error loading logo:', error);
+      const savedLogo = localStorage.getItem('site_logo');
+      if (savedLogo) {
+        setLogo(savedLogo);
+      }
+    }
+  };
 
   const handleWhatsAppContact = () => {
     const phoneNumber = "201024713976";
